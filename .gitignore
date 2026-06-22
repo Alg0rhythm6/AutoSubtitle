@@ -1,0 +1,39 @@
+# Environment variables (contains API keys, never commit)
+.env
+
+# Video files (large binary files)
+Video/*.mp4
+Video/*.mkv
+Video/*.avi
+Video/*.mov
+Video/*.mp4
+
+# Generated translated SRT files
+Srt/*.srt
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# VS Code (optional: remove this block if you want to share settings)
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
