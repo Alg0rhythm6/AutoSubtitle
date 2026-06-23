@@ -15,10 +15,13 @@ Automatically transcribes video files using [Whisper](https://github.com/openai/
 ## Features
 
 - Speech-to-text transcription with Whisper (runs locally, no API cost)
-- Concurrent subtitle translation via OpenAI Chat API
-- Bilingual subtitle merging (original + translation)
-- Configurable font sizes, language order, and secondary subtitle toggle
-- Subtitles burned into output video via FFmpeg
+- Whisper model automatically released from memory after transcription
+- Concurrent subtitle translation via OpenAI Chat API (async batching with context overlap)
+- Bilingual subtitle merging with configurable font sizes and language order
+- Optional secondary subtitle toggle (bilingual or single language)
+- Subtitles burned into output video via FFmpeg with original quality preserved
+- Hardware-accelerated encoding: NVIDIA / AMD / Intel / Apple Silicon / CPU
+- Auto-fallback to CPU if GPU encoder is unavailable
 
 ## Prerequisites
 
@@ -51,7 +54,7 @@ All options are set in the `.env` file. See [`.env.example`](.env.example) for t
 | Variable | Default | Description |
 |---|---|---|
 | `OPENAI_API_KEY` | — | Your OpenAI API key |
-| `OPENAI_MODEL` | `gpt-5-mini` | Model used for translation |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model used for translation |
 | `OPENAI_API_BASE` | `https://api.openai.com/v1` | API base URL (replace for third-party proxies) |
 | `WHISPER_MODEL` | `turbo` | Whisper model size: `tiny` / `base` / `small` / `medium` / `large` / `turbo` |
 | `SOURCE_LANGUAGE` | `English` | Language spoken in the video |
@@ -62,6 +65,7 @@ All options are set in the `.env` file. See [`.env.example`](.env.example) for t
 | `SUBTITLE_SECONDARY_SIZE` | `14` | Secondary subtitle font size (pt) |
 | `SUBTITLE_PRIMARY_LANG` | `source` | Language on top: `source` (original) or `target` (translation) |
 | `SUBTITLE_SHOW_SECONDARY` | `true` | `true` = bilingual, `false` = primary only |
+| `VIDEO_HW_ACCEL` | `cpu` | FFmpeg encoder: `cpu` / `nvidia` / `amd` / `intel` / `mac` |
 
 ## Usage
 
