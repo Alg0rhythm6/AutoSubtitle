@@ -1,6 +1,8 @@
 import os
+import shutil
 import srt
 import subprocess
+import tempfile
 
 
 def merge_bilingual_srt(original_srt_path, translated_srt_path, output_srt_path,
@@ -87,37 +89,46 @@ def burn_subtitles(video_path, srt_path, output_video_path, hw_accel="cpu"):
     
     hw_accel: 'cpu' | 'nvidia' | 'amd' | 'intel'
     """
-    srt_escaped = _ffmpeg_escape_path(srt_path)
-    vf = (
-        f"subtitles='{srt_escaped}'"
-        ":force_style='FontName=Arial,FontSize=18,"
-        "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-        "BackColour=&H80000000,Bold=0,Outline=1,Shadow=1,"
-        "MarginV=20'"
-    )
+    # Copy SRT to a temp path with no spaces or special characters to avoid
+    # ffmpeg filtergraph parsing failures on paths with spaces/parentheses.
+    tmp_srt_fd, tmp_srt_path = tempfile.mkstemp(suffix=".srt")
+    os.close(tmp_srt_fd)
+    shutil.copy2(srt_path, tmp_srt_path)
 
-    codec, bitrate = _probe_video(video_path)
+    try:
+        srt_escaped = _ffmpeg_escape_path(tmp_srt_path)
+        vf = (
+            f"subtitles='{srt_escaped}'"
+            ":force_style='FontName=Arial,FontSize=18,"
+            "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+            "BackColour=&H80000000,Bold=0,Outline=1,Shadow=1,"
+            "MarginV=20'"
+        )
 
-    hw = hw_accel.lower() if hw_accel.lower() in _HW_ENCODER_MAP else "cpu"
-    h264_enc, hevc_enc, quality_flags = _HW_ENCODER_MAP[hw]
-    encoder = hevc_enc if codec == "hevc" else h264_enc
+        codec, bitrate = _probe_video(video_path)
 
-    def _build_cmd(enc, qflags):
-        return ["ffmpeg", "-y", "-i", video_path, "-vf", vf,
-                "-c:v", enc] + qflags + ["-c:a", "copy", output_video_path]
+        hw = hw_accel.lower() if hw_accel.lower() in _HW_ENCODER_MAP else "cpu"
+        h264_enc, hevc_enc, quality_flags = _HW_ENCODER_MAP[hw]
+        encoder = hevc_enc if codec == "hevc" else h264_enc
 
-    print(f"Burning subtitles into: {os.path.basename(output_video_path)} (encoder: {encoder})")
-    result = subprocess.run(_build_cmd(encoder, quality_flags(bitrate)), capture_output=True, text=True)
+        def _build_cmd(enc, qflags):
+            return ["ffmpeg", "-y", "-i", video_path, "-vf", vf,
+                    "-c:v", enc] + qflags + ["-c:a", "copy", output_video_path]
 
-    if result.returncode != 0 and hw != "cpu":
-        # GPU encoder failed — fall back to CPU automatically
-        print(f"  GPU encoder ({encoder}) failed, falling back to CPU...")
-        cpu_h264, cpu_hevc, cpu_quality = _HW_ENCODER_MAP["cpu"]
-        cpu_encoder = cpu_hevc if codec == "hevc" else cpu_h264
-        result = subprocess.run(_build_cmd(cpu_encoder, cpu_quality(bitrate)), capture_output=True, text=True)
+        print(f"Burning subtitles into: {os.path.basename(output_video_path)} (encoder: {encoder})")
+        result = subprocess.run(_build_cmd(encoder, quality_flags(bitrate)), capture_output=True, text=True)
 
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed:\n{result.stderr}")
+        if result.returncode != 0 and hw != "cpu":
+            # GPU encoder failed — fall back to CPU automatically
+            print(f"  GPU encoder ({encoder}) failed, falling back to CPU...")
+            cpu_h264, cpu_hevc, cpu_quality = _HW_ENCODER_MAP["cpu"]
+            cpu_encoder = cpu_hevc if codec == "hevc" else cpu_h264
+            result = subprocess.run(_build_cmd(cpu_encoder, cpu_quality(bitrate)), capture_output=True, text=True)
+
+        if result.returncode != 0:
+            raise RuntimeError(f"ffmpeg failed:\n{result.stderr}")
+    finally:
+        os.unlink(tmp_srt_path)
 
     print(f"Video with bilingual subtitles saved to: {output_video_path}")
     return output_video_path

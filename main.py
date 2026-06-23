@@ -1,9 +1,9 @@
 '''
 Author: Alg0rhythm6 Alg0rhythm6@outlook.com
 Date: 2026-06-22 23:49:05
-LastEditors: Alg0rhythm6 Alg0rhythm6@outlook.com
-LastEditTime: 2026-06-23 13:33:35
-FilePath: /subtitie/main.py
+LastEditors: hahahah6 Alg0rhythm6@outlook.com
+LastEditTime: 2026-06-23 14:53:20
+FilePath: /AutoSubtitle/main.py
 Description: Entry point for AutoSubtitle. Loads configuration from .env, transcribes
              video files using Whisper, translates subtitles via OpenAI API, and burns
              bilingual subtitles into the output video using FFmpeg.
