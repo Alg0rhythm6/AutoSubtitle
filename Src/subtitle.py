@@ -52,8 +52,41 @@ def _ffmpeg_escape_path(path):
     return path
 
 
-def burn_subtitles(video_path, srt_path, output_video_path):
-    """Burn subtitles into video using ffmpeg."""
+# Maps hw_accel value to (h264_encoder, hevc_encoder, quality_flags)
+_HW_ENCODER_MAP = {
+    "cpu":    ("libx264",            "libx265",            lambda br: ["-b:v", br, "-bufsize", str(int(br)*2)] if br else ["-crf", "18"]),
+    "nvidia": ("h264_nvenc",         "hevc_nvenc",         lambda br: ["-b:v", br, "-bufsize", str(int(br)*2)] if br else ["-rc", "vbr", "-cq", "18"]),
+    "amd":    ("h264_amf",           "hevc_amf",           lambda br: ["-b:v", br, "-bufsize", str(int(br)*2)] if br else ["-quality", "quality"]),
+    "intel":  ("h264_qsv",           "hevc_qsv",           lambda br: ["-b:v", br, "-bufsize", str(int(br)*2)] if br else ["-global_quality", "18"]),
+    "mac":    ("h264_videotoolbox",  "hevc_videotoolbox",  lambda br: ["-b:v", br] if br else ["-b:v", "8000k"]),
+}
+
+
+def _probe_video(video_path):
+    """Return (codec_name, bit_rate) of the first video stream via ffprobe."""
+    result = subprocess.run([
+        "ffprobe", "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=codec_name,bit_rate",
+        "-of", "default=noprint_wrappers=1",
+        video_path,
+    ], capture_output=True, text=True)
+    codec, bitrate = None, None
+    for line in result.stdout.splitlines():
+        if line.startswith("codec_name="):
+            codec = line.split("=", 1)[1].strip()
+        elif line.startswith("bit_rate="):
+            val = line.split("=", 1)[1].strip()
+            if val and val != "N/A":
+                bitrate = val
+    return codec, bitrate
+
+
+def burn_subtitles(video_path, srt_path, output_video_path, hw_accel="cpu"):
+    """Burn subtitles into video using ffmpeg, preserving the original video quality.
+    
+    hw_accel: 'cpu' | 'nvidia' | 'amd' | 'intel'
+    """
     srt_escaped = _ffmpeg_escape_path(srt_path)
     vf = (
         f"subtitles='{srt_escaped}'"
@@ -62,16 +95,27 @@ def burn_subtitles(video_path, srt_path, output_video_path):
         "BackColour=&H80000000,Bold=0,Outline=1,Shadow=1,"
         "MarginV=20'"
     )
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", video_path,
-        "-vf", vf,
-        "-c:a", "copy",
-        output_video_path,
-    ]
 
-    print(f"Burning subtitles into: {os.path.basename(output_video_path)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    codec, bitrate = _probe_video(video_path)
+
+    hw = hw_accel.lower() if hw_accel.lower() in _HW_ENCODER_MAP else "cpu"
+    h264_enc, hevc_enc, quality_flags = _HW_ENCODER_MAP[hw]
+    encoder = hevc_enc if codec == "hevc" else h264_enc
+
+    def _build_cmd(enc, qflags):
+        return ["ffmpeg", "-y", "-i", video_path, "-vf", vf,
+                "-c:v", enc] + qflags + ["-c:a", "copy", output_video_path]
+
+    print(f"Burning subtitles into: {os.path.basename(output_video_path)} (encoder: {encoder})")
+    result = subprocess.run(_build_cmd(encoder, quality_flags(bitrate)), capture_output=True, text=True)
+
+    if result.returncode != 0 and hw != "cpu":
+        # GPU encoder failed — fall back to CPU automatically
+        print(f"  GPU encoder ({encoder}) failed, falling back to CPU...")
+        cpu_h264, cpu_hevc, cpu_quality = _HW_ENCODER_MAP["cpu"]
+        cpu_encoder = cpu_hevc if codec == "hevc" else cpu_h264
+        result = subprocess.run(_build_cmd(cpu_encoder, cpu_quality(bitrate)), capture_output=True, text=True)
+
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg failed:\n{result.stderr}")
 
@@ -81,7 +125,7 @@ def burn_subtitles(video_path, srt_path, output_video_path):
 
 def add_bilingual_subtitles(video_files, srt_path_list, target_language, output_dir,
                             primary_size=18, secondary_size=14, primary_lang="source",
-                            show_secondary=True):
+                            show_secondary=True, hw_accel="cpu"):
     """Merge translations into bilingual SRT files and burn them into the videos."""
     os.makedirs(output_dir, exist_ok=True)
 
@@ -101,4 +145,4 @@ def add_bilingual_subtitles(video_files, srt_path_list, target_language, output_
 
         video_base = os.path.splitext(os.path.basename(video_file))[0]
         output_video_path = os.path.join(output_dir, f"{video_base}_bilingual.mp4")
-        burn_subtitles(video_file, bilingual_srt_path, output_video_path)
+        burn_subtitles(video_file, bilingual_srt_path, output_video_path, hw_accel=hw_accel)

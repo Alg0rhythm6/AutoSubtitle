@@ -1,3 +1,13 @@
+<!--
+ * @Author: Alg0rhythm6 Alg0rhythm6@outlook.com
+ * @Date: 2026-06-23 01:17:40
+ * @LastEditors: Alg0rhythm6 Alg0rhythm6@outlook.com
+ * @LastEditTime: 2026-06-23 13:40:46
+ * @FilePath: \subtitie\README.md
+ * @Description: 
+ * 
+ * Copyright (c) 2026 by Alg0rhythm6, All Rights Reserved. 
+-->
 # AutoSubtitle
 
 Automatically transcribes video files using [Whisper](https://github.com/openai/whisper), translates the subtitles via OpenAI API, and burns bilingual subtitles into the output video.
@@ -41,7 +51,7 @@ All options are set in the `.env` file. See [`.env.example`](.env.example) for t
 | Variable | Default | Description |
 |---|---|---|
 | `OPENAI_API_KEY` | — | Your OpenAI API key |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model used for translation |
+| `OPENAI_MODEL` | `gpt-5-mini` | Model used for translation |
 | `OPENAI_API_BASE` | `https://api.openai.com/v1` | API base URL (replace for third-party proxies) |
 | `WHISPER_MODEL` | `turbo` | Whisper model size: `tiny` / `base` / `small` / `medium` / `large` / `turbo` |
 | `SOURCE_LANGUAGE` | `English` | Language spoken in the video |

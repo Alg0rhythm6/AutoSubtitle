@@ -13,6 +13,8 @@ Copyright (c) 2026 by Alg0rhythm6, All Rights Reserved.
 import whisper
 from whisper.utils import get_writer
 import os
+import gc
+import torch
 import openai
 from Src.translator import print_env_variables, translator
 from Src.subtitle import add_bilingual_subtitles
@@ -40,6 +42,7 @@ async def main():
     subtitle_secondary_size = int(os.getenv("SUBTITLE_SECONDARY_SIZE", 14))
     subtitle_primary_lang = os.getenv("SUBTITLE_PRIMARY_LANG", "source")
     subtitle_show_secondary = os.getenv("SUBTITLE_SHOW_SECONDARY", "true").lower() == "true"
+    video_hw_accel = os.getenv("VIDEO_HW_ACCEL", "cpu")
 
     print_env_variables(api_key, model, openai_url)
 
@@ -85,6 +88,14 @@ async def main():
         srt_path_list.append(srt_path)
 
     print("SRT files generated:", srt_path_list)
+
+    # Release Whisper model to free GPU/RAM before translation
+    del whisper_model_instance
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    print("Whisper model released from memory.")
+
     print("Starting translation of SRT files...")
     await translator(api_key, model, openai_url, video_files, srt_path_list, target_language, chunk_size=translation_chunk_size, overlap=translation_overlap)
 
@@ -92,7 +103,8 @@ async def main():
     output_dir = os.path.join(current_dir, "Output")
     add_bilingual_subtitles(video_files, srt_path_list, target_language, output_dir,
                             primary_size=subtitle_primary_size, secondary_size=subtitle_secondary_size,
-                            primary_lang=subtitle_primary_lang, show_secondary=subtitle_show_secondary)
+                            primary_lang=subtitle_primary_lang, show_secondary=subtitle_show_secondary,
+                            hw_accel=video_hw_accel)
 
     print("Finished translation process.")
 
