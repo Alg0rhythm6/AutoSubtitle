@@ -3,7 +3,7 @@ Author: Alg0rhythm6 Alg0rhythm6@outlook.com
 Date: 2026-06-22 23:49:05
 LastEditors: Alg0rhythm6 Alg0rhythm6@outlook.com
 LastEditTime: 2026-06-23 13:33:35
-FilePath: \subtitie\main.py
+FilePath: /subtitie/main.py
 Description: Entry point for AutoSubtitle. Loads configuration from .env, transcribes
              video files using Whisper, translates subtitles via OpenAI API, and burns
              bilingual subtitles into the output video using FFmpeg.
@@ -20,8 +20,17 @@ from Src.translator import print_env_variables, translator
 from Src.subtitle import add_bilingual_subtitles
 from dotenv import load_dotenv
 import asyncio
+import shutil
 
+def ensure_ffmpeg_available() -> None:
+    """Fail fast if ffmpeg is not installed or not in PATH."""
+    if shutil.which("ffmpeg") is None:
+        raise EnvironmentError(
+            "ffmpeg command not found. Please install ffmpeg and ensure it is available in PATH."
+        )
+    
 async def main():
+    ensure_ffmpeg_available()
     current_dir = os.getcwd()
     env_path = os.path.join(current_dir, ".env")
     load_dotenv(dotenv_path=env_path)
