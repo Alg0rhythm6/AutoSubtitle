@@ -6,7 +6,9 @@ Video/*.mp4
 Video/*.mkv
 Video/*.avi
 Video/*.mov
-Video/*.mp4
+
+# Output videos with burned-in subtitles
+Output/
 
 # Generated translated SRT files
 Srt/*.srt
