@@ -56,7 +56,12 @@ def _ffmpeg_escape_path(path):
 
 # Maps hw_accel value to (h264_encoder, hevc_encoder, quality_flags)
 _HW_ENCODER_MAP = {
-    "cpu":    ("libx264",            "libx265",            lambda br: ["-b:v", br, "-bufsize", str(int(br)*2)] if br else ["-crf", "18"]),
+    # Keep the source bitrate when ffprobe provides it (for example 8000k).
+    # Burn-in requires re-encoding, so use a slow preset to retain detail.
+    "cpu":    ("libx264",            "libx265",            lambda br: (["-b:v", br, "-maxrate", br,
+                                                                    "-bufsize", str(int(br) * 2),
+                                                                    "-preset", "slow"]
+                                                                   if br else ["-crf", "16", "-preset", "slow"])),
     "nvidia": ("h264_nvenc",         "hevc_nvenc",         lambda br: ["-b:v", br, "-bufsize", str(int(br)*2)] if br else ["-rc", "vbr", "-cq", "18"]),
     "amd":    ("h264_amf",           "hevc_amf",           lambda br: ["-b:v", br, "-bufsize", str(int(br)*2)] if br else ["-quality", "quality"]),
     "intel":  ("h264_qsv",           "hevc_qsv",           lambda br: ["-b:v", br, "-bufsize", str(int(br)*2)] if br else ["-global_quality", "18"]),

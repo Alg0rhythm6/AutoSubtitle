@@ -4,7 +4,8 @@ import srt
 import asyncio
 
 def print_env_variables(api_key, model, openai_url):
-    print(f"Using OpenAI API Key: {api_key}")
+    print_api_key = f"{api_key[:4]}****{api_key[-4:]}"
+    print(f"Using OpenAI API Key: {print_api_key}")
     print(f"Using OpenAI Model: {model}")
     print(f"Using OpenAI API Base URL: {openai_url}")
 
