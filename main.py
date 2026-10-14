@@ -10,14 +10,8 @@ Description: Entry point for AutoSubtitle. Loads configuration from .env, transc
 
 Copyright (c) 2026 by Alg0rhythm6, All Rights Reserved. 
 '''
-import whisper
-from whisper.utils import get_writer
 import os
 import gc
-import torch
-import openai
-from Src.translator import print_env_variables, translator
-from Src.subtitle import add_bilingual_subtitles, burn_subtitles
 from dotenv import load_dotenv
 import asyncio
 import shutil
@@ -25,7 +19,10 @@ import argparse
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Transcribe, translate, and burn subtitles.")
+    parser = argparse.ArgumentParser(description="Transcribe, translate, and optionally burn subtitles.")
+    parser.add_argument("--mode", choices=("all", "transcribe", "translate"), default=None,
+                        help="all: transcribe and translate; transcribe: generate SRT only; translate: translate existing SRT files")
+    parser.add_argument("files", nargs="*", help="Video files (transcribe/all) or SRT files (translate)")
     parser.add_argument("-s", "--source", dest="source_language", help="Source language")
     parser.add_argument("-t", "--target", dest="target_language", help="Target language")
     parser.add_argument("-m", "--model", dest="openai_model", help="OpenAI translation model")
@@ -45,7 +42,6 @@ def ensure_ffmpeg_available() -> None:
     
 async def main(argv=None, direct_mode=False):
     args = parse_args(argv)
-    ensure_ffmpeg_available()
     current_dir = os.getcwd()
     env_path = os.path.join(current_dir, ".env")
     load_dotenv(dotenv_path=env_path)
@@ -55,9 +51,15 @@ async def main(argv=None, direct_mode=False):
     whisper_model = args.whisper_model or os.getenv("WHISPER_MODEL", "turbo")
     source_language = args.source_language or os.getenv("SOURCE_LANGUAGE", "English")
     target_language = args.target_language or os.getenv("TARGET_LANGUAGE", "Chinese")
+    output_mode = args.output_mode or os.getenv("OUTPUT_MODE", "both")
+    if output_mode not in ("both", "video", "subtitle"):
+        raise ValueError("OUTPUT_MODE must be one of: both, video, subtitle")
     same_language = source_language.strip().casefold() == target_language.strip().casefold()
-    if not api_key and not same_language:
-        raise ValueError("OPENAI_API_KEY environment variable is not set.")
+    mode = args.mode or ("transcribe" if output_mode == "subtitle" else "all")
+    if mode == "translate" and same_language:
+        raise ValueError("SOURCE_LANGUAGE and TARGET_LANGUAGE are the same; translation is unnecessary.")
+    if mode in ("all", "translate") and not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable is required for translation.")
     translation_chunk_size = int(os.getenv("TRANSLATION_CHUNK_SIZE", 20))
     translation_overlap = int(os.getenv("TRANSLATION_OVERLAP", 5))
     subtitle_primary_size = int(os.getenv("SUBTITLE_PRIMARY_SIZE", 18))
@@ -65,11 +67,13 @@ async def main(argv=None, direct_mode=False):
     subtitle_primary_lang = os.getenv("SUBTITLE_PRIMARY_LANG", "source")
     subtitle_show_secondary = os.getenv("SUBTITLE_SHOW_SECONDARY", "true").lower() == "true"
     video_hw_accel = args.video_hw_accel or os.getenv("VIDEO_HW_ACCEL", "cpu")
-    output_mode = args.output_mode or os.getenv("OUTPUT_MODE", "both")
-    if output_mode not in ("both", "video", "subtitle"):
-        raise ValueError("OUTPUT_MODE must be one of: both, video, subtitle")
+    needs_video = mode in ("all", "transcribe")
+    if needs_video:
+        import torch
+        import whisper
+        from whisper.utils import get_writer
     requested_device = args.device or os.getenv("WHISPER_DEVICE", "auto")
-    if requested_device == "auto":
+    if needs_video and requested_device == "auto":
         if torch.cuda.is_available():
             whisper_device = "cuda"
         elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
@@ -79,24 +83,38 @@ async def main(argv=None, direct_mode=False):
     else:
         whisper_device = requested_device
 
-    print_env_variables(api_key, model, openai_url)
-
-    print(f"Using Whisper Model: {whisper_model}")
-    print(f"Using Whisper Device: {whisper_device}")
-    print(f"Source Language: {source_language}")
-    print(f"Target Language: {target_language}")
-    print("Environment variables loaded successfully.")
-    print("--------------------------------")
-    print("Starting translation process...")
+    needs_ffmpeg = mode == "all" and output_mode in ("both", "video")
+    if needs_ffmpeg:
+        ensure_ffmpeg_available()
+    if mode in ("all", "translate"):
+        from Src.translator import print_env_variables, translator
+        print_env_variables(api_key, model, openai_url)
+    if needs_video:
+        print(f"Using Whisper Model: {whisper_model}")
+        print(f"Using Whisper Device: {whisper_device}")
+        print(f"Source Language: {source_language}")
+    print(f"Mode: {mode}")
 
 
 
     #get current working directory
 
 
+    if mode == "translate":
+        srt_path_list = ([os.path.abspath(os.path.expanduser(path)) for path in args.files]
+                         if args.files else
+                         [os.path.join(current_dir, "Srt", f) for f in os.listdir(os.path.join(current_dir, "Srt"))
+                          if f.lower().endswith(".srt") and "_" not in os.path.splitext(f)[0]])
+        if not srt_path_list:
+            raise FileNotFoundError("No SRT files found. Pass SRT paths or place original SRT files in Srt/.")
+        await translator(api_key, model, openai_url, [None] * len(srt_path_list), srt_path_list,
+                         target_language, chunk_size=translation_chunk_size, overlap=translation_overlap)
+        print("Finished translation process.")
+        return
+
     if direct_mode:
-        video_files = ([os.path.abspath(os.path.expanduser(path)) for path in args.videos]
-                       if args.videos else
+        video_files = ([os.path.abspath(os.path.expanduser(path)) for path in args.files]
+                       if args.files else
                        [os.path.join(current_dir, f) for f in os.listdir(current_dir)
                         if f.lower().endswith((".mp4", ".mkv", ".avi", ".mov"))])
     else:
@@ -144,7 +162,12 @@ async def main(argv=None, direct_mode=False):
         torch.mps.empty_cache()
     print("Whisper model released from memory.")
 
+    if mode == "transcribe":
+        print("Transcription complete. SRT files generated; skipping translation and video output.")
+        return
+
     output_dir = os.path.join(current_dir, "Output")
+    from Src.subtitle import add_bilingual_subtitles, burn_subtitles
     if not direct_mode:
         os.makedirs(output_dir, exist_ok=True)
     print("Starting translation of SRT files...")

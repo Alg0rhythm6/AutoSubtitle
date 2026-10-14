@@ -75,6 +75,18 @@ Place `.mp4` files in the `Video/` folder, then run:
 python main.py
 ```
 
+也可以分开运行：
+
+```bash
+# 只用本地 Whisper 识别并生成 SRT，不翻译、不需要 API、不生成视频
+python main.py --mode transcribe Video/example.mp4
+
+# 只翻译已有原文 SRT，需要 OPENAI_API_KEY，不需要 Whisper 或 FFmpeg
+python main.py --mode translate Srt/example_English.srt
+```
+
+`--mode all`（默认）执行完整的识别、翻译和视频字幕烧录流程。程序只在需要生成视频时检查 FFmpeg，只在需要翻译时检查 API 密钥。
+
 ### Pipeline
 
 ```
